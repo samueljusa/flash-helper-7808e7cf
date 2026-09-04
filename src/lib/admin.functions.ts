@@ -72,10 +72,9 @@ export const getAdminStats = createServerFn({ method: "GET" })
         .select("id", { count: "exact", head: true })
         .eq("status", "error"),
       supabaseAdmin
-        .from("generations")
+        .from("community_gallery")
         .select("id", { count: "exact", head: true })
-        .eq("submitted_public", true)
-        .eq("moderation_status", "pending"),
+        .eq("status", "en_attente"),
       supabaseAdmin
         .from("subscriptions")
         .select("id", { count: "exact", head: true })
