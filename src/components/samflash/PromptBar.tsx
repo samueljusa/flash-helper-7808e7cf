@@ -216,6 +216,7 @@ export function PromptBar({ onStart, onSettled, onGenerated, onQuotaExceeded }: 
               aria-label="Vidéo"
               onClick={() => {
                 setMode("video");
+                setRes((r) => (r === "1080p" ? "720p" : r));
                 focusInput();
               }}
               className={`flex items-center gap-2 rounded-full px-3 py-2 ${
