@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ChevronRight, Play, Share2, Sparkles, User } from "lucide-react";
 import { submitToGallery } from "@/lib/community.functions";
 import { SupportReplyNotifier } from "@/components/samflash/SupportReplyNotifier";
@@ -15,7 +15,6 @@ import { PlansSheet } from "@/components/samflash/PlansSheet";
 import { useGenerations, type Generation } from "@/hooks/useGenerations";
 import { PendingCard } from "@/components/samflash/PendingCard";
 import { MediaViewer } from "@/components/samflash/MediaViewer";
-import { TIER_LABEL, formatSeconds } from "@/lib/quota";
 import logoAsset from "@/assets/sam-flash-logo.png.asset.json";
 
 export const Route = createFileRoute("/app")({
@@ -49,7 +48,7 @@ function AppFeed() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const { session, loading } = useAuth();
-  const { quota, items, loading: feedLoading, refresh } = useGenerations(!!session);
+  const { items, loading: feedLoading, refresh } = useGenerations(!!session);
   const submit = useServerFn(submitToGallery);
 
   useEffect(() => {
@@ -103,34 +102,6 @@ function AppFeed() {
         </button>
       </header>
 
-      <section className="px-4 pt-4">
-        <div className="rounded-2xl border border-border bg-card/40 p-4 backdrop-blur-xl">
-          {quota && quota.limit > 0 ? (
-            <>
-              <div className="flex items-center text-sm">
-                <span className="font-medium">
-                  {t("quotaToday")} · {TIER_LABEL[quota.tier]}
-                </span>
-                <span className="ml-auto text-muted-foreground">
-                  {formatSeconds(quota.used)} / {formatSeconds(quota.limit)}
-                </span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{
-                    width: `${Math.min(100, (quota.used / Math.max(1, quota.limit)) * 100)}%`,
-                  }}
-                />
-              </div>
-            </>
-          ) : quota ? (
-            <p className="text-sm text-muted-foreground">{t("unlimited")}</p>
-          ) : (
-            <div className="h-10 animate-pulse rounded-xl bg-secondary/60" />
-          )}
-        </div>
-      </section>
 
       <section className="pt-6">
         <div className="flex items-center gap-2 px-4">
@@ -229,7 +200,6 @@ function AppFeed() {
       </section>
 
       <PromptBar
-        quota={quota}
         onStart={(p) => setPending(p)}
         onSettled={() => setPending(null)}
         onGenerated={() => void refresh()}

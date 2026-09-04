@@ -171,19 +171,28 @@ function GalleryPage() {
                   className="flex items-center gap-3 rounded-2xl border border-border bg-card/40 p-3 backdrop-blur-xl"
                 >
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-secondary">
-                    {g.media_url && g.media_type !== "video" && (
-                      <img
-                        src={g.media_url}
-                        alt={g.prompt}
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
-                    )}
+                    {g.media_url &&
+                      (g.media_type === "video" ? (
+                        <video
+                          src={g.media_url}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={g.media_url}
+                          alt={g.prompt}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      ))}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-sm">{g.prompt}</p>
                     <p className="text-[11px] text-muted-foreground">
-                      {g.media_type} · {g.moderation_status}
+                      {g.media_type} · {g.status}
                     </p>
                   </div>
                   <button

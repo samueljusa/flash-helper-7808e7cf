@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Captions, Download, Film, Loader2, RefreshCw, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { generateMedia, retryGeneration } from "@/lib/generation.functions";
 import { generateSubtitles } from "@/lib/subtitles.functions";
 import { useI18n } from "@/lib/i18n";

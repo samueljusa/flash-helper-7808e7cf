@@ -12,11 +12,16 @@ type GenerateInput = {
 
 function normalize(input: GenerateInput) {
   if (!input?.prompt?.trim()) throw new Error("Prompt requis");
+  const mediaType = input.mediaType === "image" ? ("image" as const) : ("video" as const);
+  let resolution = String(input.resolution ?? "720p");
+  // Les vidéos sont limitées à 720p et 6 secondes.
+  if (mediaType === "video" && resolution !== "480p") resolution = "720p";
+  const seconds = Math.min(6, Number.parseInt(String(input.duration ?? "6"), 10) || 6);
   return {
     prompt: input.prompt.trim().slice(0, 2000),
-    mediaType: input.mediaType === "image" ? ("image" as const) : ("video" as const),
-    resolution: String(input.resolution ?? "720p"),
-    duration: String(input.duration ?? "6s"),
+    mediaType,
+    resolution,
+    duration: `${seconds}s`,
     aspectRatio: String(input.aspectRatio ?? "2:3"),
   };
 }
