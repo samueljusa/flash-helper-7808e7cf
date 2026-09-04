@@ -34,25 +34,20 @@ const PLANS: Plan[] = [
   {
     id: "base",
     label: "Super grok",
-    tagline: (
-      <>
-        Essayez <span className="text-primary">0,00 €</span> pour 7 jours
-      </>
-    ),
+    tagline: <>Créez sans limite avec Super grok</>,
     features: [
       {
         icon: Sparkles,
         title: "Créez des images et des vidéos IA époustouflantes",
-        sub: "Avec des vidéos HD 720p de 30 secondes",
+        sub: "Avec des vidéos HD 720p de 6 secondes",
       },
       { icon: FolderPlus, title: "Importez plus de fichiers pour des réponses plus pertinentes" },
       { icon: Zap, title: "Des réponses fulgurantes" },
     ],
-    monthly: "0 €",
-    monthlyNote: "GRATUIT",
+    monthly: "35 € /mois",
     yearly: { price: "349 € /an", perMonth: "29,08 € /mois" },
-    cta: "Commencer l'essai gratuit de 7 jours",
-    footnote: "Renouvellement à 35 €/mois après l'essai, annulez à tout moment",
+    cta: "Passer à Super grok",
+    footnote: "Facturation mensuelle, annulez à tout moment",
   },
   {
     id: "plus",
