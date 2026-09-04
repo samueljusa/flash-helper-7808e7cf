@@ -11,6 +11,9 @@ import {
   LifeBuoy,
   CreditCard,
   Images,
+  Check,
+  X,
+  Trash2,
 } from "lucide-react";
 import {
   getAdminAccess,
@@ -43,6 +46,14 @@ import {
   type SupportMessage,
   type SupportReply,
 } from "@/lib/support.functions";
+import {
+  listModerationQueue,
+  moderateGeneration,
+  deleteGalleryItem,
+  type ModerationItem,
+} from "@/lib/community.functions";
+import { getPromoSettings, setPromoSettings } from "@/lib/promo.functions";
+import { toast } from "@/lib/toast";
 import { useAuth } from "@/hooks/useAuth";
 import { formatSeconds } from "@/lib/quota";
 
@@ -92,6 +103,11 @@ function AdminPage() {
   const fetchReplies = useServerFn(listSupportReplies);
   const sendReply = useServerFn(replyToSupportMessage);
   const setTicketStatus = useServerFn(updateSupportStatus);
+  const fetchQueue = useServerFn(listModerationQueue);
+  const moderate = useServerFn(moderateGeneration);
+  const removeItem = useServerFn(deleteGalleryItem);
+  const fetchPromo = useServerFn(getPromoSettings);
+  const savePromo = useServerFn(setPromoSettings);
 
   const [roles, setRoles] = useState<StaffRole[]>([]);
   const [isStaff, setIsStaff] = useState<boolean | null>(null);
@@ -111,8 +127,13 @@ function AdminPage() {
   const [priceNotice, setPriceNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("overview");
+  const [queue, setQueue] = useState<ModerationItem[]>([]);
+  const [modBusy, setModBusy] = useState<string | null>(null);
+  const [promoEnabled, setPromoEnabled] = useState(false);
+  const [promoSaving, setPromoSaving] = useState(false);
 
   const isAdmin = roles.includes("admin");
+  const canModerate = roles.includes("admin") || roles.includes("moderator");
   const canPrices = isAdmin || roles.includes("finance");
   const canSupport = isAdmin || roles.includes("support");
 
@@ -145,6 +166,10 @@ function AdminPage() {
         setMembers(m as TeamMember[]);
         setInvites(i as TeamInvitation[]);
       }
+      if (admin || access.roles.includes("moderator")) {
+        setQueue((await fetchQueue({})) as ModerationItem[]);
+      }
+      if (admin) setPromoEnabled((await fetchPromo({})).enabled);
       if (finance) setPrices((await fetchPrices({})) as AdminPrice[]);
       if (support) setTickets((await fetchTickets({})) as SupportMessage[]);
     } catch {
@@ -162,7 +187,59 @@ function AdminPage() {
     fetchMembers,
     fetchInvites,
     fetchTickets,
+    fetchQueue,
+    fetchPromo,
   ]);
+
+  const actOnItem = useCallback(
+    async (id: string, action: "approve" | "reject" | "delete") => {
+      setModBusy(id);
+      try {
+        if (action === "delete") {
+          await removeItem({ data: { id } });
+          toast.success("Création supprimée.");
+        } else {
+          await moderate({
+            data:
+              action === "reject"
+                ? { id, action, reason: "Contenu inapproprié" }
+                : { id, action },
+          });
+          toast.success(action === "approve" ? "Création publiée." : "Création rejetée.");
+        }
+        setQueue((await fetchQueue({})) as ModerationItem[]);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Action impossible.");
+      } finally {
+        setModBusy(null);
+      }
+    },
+    [moderate, removeItem, fetchQueue],
+  );
+
+  const togglePromo = useCallback(
+    async (next: boolean) => {
+      setPromoSaving(true);
+      try {
+        const res = await savePromo({
+          data: { enabled: next, prices: { base: 0, plus: null, heavy: null } },
+        });
+        if (res.ok) {
+          setPromoEnabled(next);
+          toast.success(
+            next ? "Offre de lancement activée." : "Offre de lancement désactivée.",
+          );
+        } else {
+          toast.error(res.message);
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Enregistrement impossible.");
+      } finally {
+        setPromoSaving(false);
+      }
+    },
+    [savePromo],
+  );
 
   useEffect(() => {
     void load();
@@ -220,6 +297,7 @@ function AdminPage() {
       icon: CreditCard,
       show: isAdmin || roles.includes("finance"),
     },
+    { id: "moderation", label: "Modération", icon: ShieldCheck, show: canModerate },
     { id: "content", label: "Créations", icon: Images, show: isAdmin },
   ].filter((s) => s.show);
 
@@ -329,6 +407,29 @@ function AdminPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Montants en euros, convertis automatiquement à l'achat.
                 </p>
+
+                {isAdmin && (
+                  <div className="mt-4 flex items-center gap-3 rounded-3xl border border-border/70 bg-card/50 p-5 backdrop-blur-xl">
+                    <div className="min-w-0">
+                      <p className="text-[17px] font-medium">Offre de lancement</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Super grok offert 30 jours, activation immédiate sans paiement.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={promoSaving}
+                      onClick={() => void togglePromo(!promoEnabled)}
+                      className={`ml-auto shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                        promoEnabled
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      {promoEnabled ? "Activée" : "Désactivée"}
+                    </button>
+                  </div>
+                )}
                 <ul className="mt-4 space-y-3">
                   {prices.map((p) => (
                     <li
@@ -668,6 +769,84 @@ function AdminPage() {
                   {orders.length === 0 && (
                     <li className="py-6 text-center text-sm text-muted-foreground">
                       Aucune commande enregistrée.
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
+
+            {active === "moderation" && canModerate && (
+              <section className="pt-5">
+                <h2 className="text-[22px] font-semibold tracking-tight">
+                  Modération de la galerie
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Toutes les créations arrivent ici automatiquement. Publiez, rejetez ou supprimez.
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {queue.map((g) => (
+                    <li
+                      key={g.id}
+                      className="flex items-center gap-3 rounded-3xl border border-border/70 bg-card/50 p-3 backdrop-blur-xl"
+                    >
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-secondary">
+                        {g.media_url &&
+                          (g.media_type === "video" ? (
+                            <video
+                              src={g.media_url}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <img
+                              src={g.media_url}
+                              alt={g.prompt}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                          ))}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm">{g.prompt}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {g.media_type} · {g.status} ·{" "}
+                          {new Date(g.created_at).toLocaleString("fr-FR")}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Publier"
+                        disabled={modBusy === g.id}
+                        onClick={() => void actOnItem(g.id, "approve")}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Rejeter"
+                        disabled={modBusy === g.id}
+                        onClick={() => void actOnItem(g.id, "reject")}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary disabled:opacity-40"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Supprimer"
+                        disabled={modBusy === g.id}
+                        onClick={() => void actOnItem(g.id, "delete")}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive text-destructive-foreground disabled:opacity-40"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </li>
+                  ))}
+                  {queue.length === 0 && (
+                    <li className="py-10 text-center text-sm text-muted-foreground">
+                      Aucune création à modérer.
                     </li>
                   )}
                 </ul>
