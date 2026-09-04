@@ -1,10 +1,13 @@
 /**
- * Logique serveur de génération de médias (Grok Imagine / OpenRouter / passerelle Lovable).
- * Règle de crédits : le quota est réservé de façon atomique puis remboursé
- * intégralement si l'API échoue ou si le média n'est pas affichable.
+ * Logique serveur de génération de médias (Fal.ai / Grok Imagine).
+ * Règle de quota : la réservation est atomique puis remboursée intégralement
+ * si le moteur échoue ou si le média n'est pas affichable.
+ *
+ * Limites offre découverte :
+ *  - 5 images par jour
+ *  - 9 vidéos par jour, avec une pause de 3 h après la 5ᵉ vidéo
+ * Vidéos : 6 secondes maximum, 480p ou 720p.
  */
-
-import type { Tier } from "@/lib/quota";
 
 export type GenerationInput = {
   prompt: string;
@@ -12,6 +15,8 @@ export type GenerationInput = {
   resolution: string;
   duration: string;
   aspectRatio: string;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
 };
 
 export type GenerationRow = {
@@ -29,9 +34,11 @@ export type GenerationRow = {
   created_at: string;
 };
 
+export type QuotaReason = "image_daily" | "video_daily" | "video_pause";
+
 export type GenerationResult =
   | { ok: true; id: string | null; status: "ready"; mediaUrl: string; seconds: number }
-  | { ok: false; reason: "quota"; used: number; limit: number; tier: Tier }
+  | { ok: false; reason: "quota"; code: QuotaReason; retryAt: string | null }
   | { ok: false; reason: "error"; message: string; id: string | null };
 
 const SIGNED_URL_TTL = 60 * 60 * 6;
@@ -71,107 +78,42 @@ type MediaOutcome =
   | { ok: true; bytes: Uint8Array | null; contentType: string; mediaUrl: string | null }
   | { ok: false; error: string };
 
-/** Taille exacte acceptée par gpt-image-2 pour le format demandé. */
-function openaiSizeFor(ratio: string): "1024x1024" | "1024x1536" | "1536x1024" {
-  const [w, h] = ratio.split(":").map((n) => Number.parseFloat(n));
-  if (!w || !h || w === h) return "1024x1024";
-  return w > h ? "1536x1024" : "1024x1536";
-}
-
-/** Chaîne de fournisseurs pour les images : Grok Imagine → OpenRouter → passerelle Lovable. */
+/** Génération image : Fal.ai (Grok Imagine, repli Flux Schnell). */
 async function generateImage(input: GenerationInput): Promise<MediaOutcome> {
-  const errors: string[] = [];
-
-  const { isXaiConfigured, generateImageWithXai } = await import("@/lib/services/xai.server");
-  if (isXaiConfigured()) {
-    const result = await generateImageWithXai(input);
-    if (result.ok) {
-      return { ok: true, bytes: result.bytes, contentType: result.contentType, mediaUrl: result.bytes ? null : result.mediaUrl };
-    }
-    errors.push(`Grok Imagine : ${result.error}`);
+  const { isFalConfigured, generateImageWithFal } = await import("@/lib/services/fal.server");
+  if (!isFalConfigured()) {
+    return { ok: false, error: "Le moteur de génération d'images n'est pas disponible." };
   }
-
-  const { isOpenRouterConfigured, generateImageWithOpenRouter } = await import(
-    "@/lib/services/openrouter.server"
-  );
-  if (isOpenRouterConfigured()) {
-    const result = await generateImageWithOpenRouter(input);
-    if (result.ok) {
-      return { ok: true, bytes: result.bytes, contentType: result.contentType, mediaUrl: result.bytes ? null : result.mediaUrl };
-    }
-    errors.push(`OpenRouter : ${result.error}`);
-  }
-
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (apiKey) {
-    // gpt-image-2 accepte une taille exacte : le format choisi est donc respecté.
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "openai/gpt-image-2",
-        prompt: `${input.prompt}. Cadrage ${input.aspectRatio}, qualité ${input.resolution}.`,
-        size: openaiSizeFor(input.aspectRatio),
-        n: 1,
-      }),
-    });
-    if (res.ok) {
-      const json = (await res.json()) as { data?: { b64_json?: string }[] };
-      const base64 = json.data?.[0]?.b64_json;
-      if (base64) {
-        const binary = atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-        return { ok: true, bytes, contentType: "image/png", mediaUrl: null };
-      }
-      errors.push("Passerelle Lovable : aucune image renvoyée");
-    } else {
-      errors.push(`Passerelle Lovable : refus (${res.status})`);
-    }
-  }
-
+  const result = await generateImageWithFal(input);
+  if (!result.ok) return { ok: false, error: result.error };
   return {
-    ok: false,
-    error: errors.length > 0 ? errors.join(" · ") : "Aucune passerelle image configurée",
+    ok: true,
+    bytes: result.bytes,
+    contentType: result.contentType,
+    mediaUrl: result.bytes ? null : result.mediaUrl,
   };
 }
 
-/** Vidéo : Grok Imagine (xAI) puis OpenRouter si un modèle vidéo y est configuré. */
+/** Génération vidéo : Fal.ai (text-to-video, image-to-video ou montage). */
 async function generateVideo(input: GenerationInput): Promise<MediaOutcome> {
-  const errors: string[] = [];
-
-  const { isXaiConfigured, generateVideoWithXai } = await import("@/lib/services/xai.server");
-  if (isXaiConfigured()) {
-    const result = await generateVideoWithXai(input);
-    if (result.ok) {
-      return { ok: true, bytes: result.bytes, contentType: result.contentType, mediaUrl: result.bytes ? null : result.mediaUrl };
-    }
-    errors.push(`Grok Imagine : ${result.error}`);
+  const { isFalConfigured, generateVideoWithFal } = await import("@/lib/services/fal.server");
+  if (!isFalConfigured()) {
+    return { ok: false, error: "Le moteur de génération vidéo n'est pas disponible." };
   }
-
-  const { isOpenRouterVideoConfigured, generateVideoWithOpenRouter } = await import(
-    "@/lib/services/openrouter.server"
-  );
-  if (isOpenRouterVideoConfigured()) {
-    const result = await generateVideoWithOpenRouter(input);
-    if (result.ok) {
-      return { ok: true, bytes: result.bytes, contentType: result.contentType, mediaUrl: result.bytes ? null : result.mediaUrl };
-    }
-    errors.push(`OpenRouter : ${result.error}`);
-  }
-
-  if (errors.length === 0) {
-    return {
-      ok: false,
-      error:
-        "La génération vidéo Grok Imagine n'est pas encore activée (clé xAI manquante) — aucun crédit n'a été débité.",
-    };
-  }
-  return { ok: false, error: errors.join(" · ") };
+  const result = await generateVideoWithFal(input);
+  if (!result.ok) return { ok: false, error: result.error };
+  return {
+    ok: true,
+    bytes: result.bytes,
+    contentType: result.contentType,
+    mediaUrl: result.bytes ? null : result.mediaUrl,
+  };
 }
 
 export function secondsFor(input: GenerationInput): number {
-  return input.mediaType === "video" ? Number.parseInt(input.duration, 10) || 6 : 2;
+  if (input.mediaType !== "video") return 2;
+  const parsed = Number.parseInt(input.duration, 10);
+  return Math.min(6, Number.isFinite(parsed) && parsed > 0 ? parsed : 6);
 }
 
 /** Exécute une génération complète pour un utilisateur donné. */
@@ -182,9 +124,9 @@ export async function runGeneration(
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const seconds = secondsFor(input);
 
-  const { data: reserved, error: reserveError } = await supabaseAdmin.rpc("reserve_quota", {
+  const { data: reserved, error: reserveError } = await supabaseAdmin.rpc("reserve_media_quota", {
     _user_id: userId,
-    _seconds: seconds,
+    _media_type: input.mediaType,
   });
   if (reserveError) throw new Error(reserveError.message);
 
@@ -193,9 +135,8 @@ export async function runGeneration(
     return {
       ok: false,
       reason: "quota",
-      used: row?.seconds_used ?? 0,
-      limit: row?.seconds_limit ?? 0,
-      tier: (row?.tier ?? "free") as Tier,
+      code: (row?.reason ?? "image_daily") as QuotaReason,
+      retryAt: row?.retry_at ?? null,
     };
   }
 
@@ -203,7 +144,10 @@ export async function runGeneration(
   const refund = async () => {
     if (!debited) return;
     debited = false;
-    await supabaseAdmin.rpc("refund_quota", { _user_id: userId, _seconds: seconds });
+    await supabaseAdmin.rpc("refund_media_quota", {
+      _user_id: userId,
+      _media_type: input.mediaType,
+    });
   };
 
   const persist = async (fields: {
@@ -257,6 +201,20 @@ export async function runGeneration(
     if (!mediaUrl) throw new Error("Média indisponible : aucun crédit n'a été débité");
 
     const id = await persist({ mediaUrl, storagePath, status: "ready", errorMessage: null });
+
+    // Toute création réussie part automatiquement en modération.
+    if (id) {
+      await supabaseAdmin.from("community_gallery").insert({
+        generation_id: id,
+        user_id: userId,
+        prompt: input.prompt,
+        media_type: input.mediaType,
+        media_url: mediaUrl,
+        storage_path: storagePath,
+        status: "en_attente",
+      });
+    }
+
     return { ok: true, id, status: "ready", mediaUrl, seconds };
   } catch (error) {
     await refund();
