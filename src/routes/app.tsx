@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ChevronRight, Play, Share2, Sparkles, User } from "lucide-react";
 import { submitToGallery } from "@/lib/community.functions";
 import { SupportReplyNotifier } from "@/components/samflash/SupportReplyNotifier";
