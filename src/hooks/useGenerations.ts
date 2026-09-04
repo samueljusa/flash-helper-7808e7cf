@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { getQuotaStatus, listGenerations } from "@/lib/generation.functions";
-import type { Tier } from "@/lib/quota";
+import { listGenerations } from "@/lib/generation.functions";
 
 export type Generation = {
   id: string;
@@ -17,12 +16,8 @@ export type Generation = {
   created_at: string;
 };
 
-export type Quota = { tier: Tier; limit: number; used: number; remaining: number };
-
 export function useGenerations(enabled: boolean) {
-  const fetchQuota = useServerFn(getQuotaStatus);
   const fetchList = useServerFn(listGenerations);
-  const [quota, setQuota] = useState<Quota | null>(null);
   const [items, setItems] = useState<Generation[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -30,17 +25,15 @@ export function useGenerations(enabled: boolean) {
     if (!enabled) return;
     setLoading(true);
     try {
-      const [q, l] = await Promise.all([fetchQuota({}), fetchList({})]);
-      setQuota(q as Quota);
-      setItems(l as Generation[]);
+      setItems((await fetchList({})) as Generation[]);
     } finally {
       setLoading(false);
     }
-  }, [enabled, fetchQuota, fetchList]);
+  }, [enabled, fetchList]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  return { quota, items, loading, refresh };
+  return { items, loading, refresh };
 }
