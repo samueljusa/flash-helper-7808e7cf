@@ -1,7 +1,7 @@
 # Feuille de route
 
 ## En cours
-- [ ] Corriger la connexion au site (impossible de se connecter)
+- [x] Connexion réparée : Google activé + confirmation e-mail désactivée
 
 ## Fait
 - [x] Table `community_gallery` + modération centralisée dans le bureau d'administration
