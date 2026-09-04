@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { listPrices, type PriceRow } from "@/lib/payments.functions";
+import { activatePromoOffer, getPromoSettings } from "@/lib/promo.functions";
+import { toast } from "@/lib/toast";
 import { CheckoutSheet } from "@/components/samflash/CheckoutSheet";
 import {
   X,
@@ -88,7 +90,14 @@ export function PlansSheet({ onClose }: { onClose: () => void }) {
   const [notice] = useState<string | null>(null);
   const [prices, setPrices] = useState<PriceRow[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [promo, setPromo] = useState<{ enabled: boolean; prices: Record<string, number | null> }>({
+    enabled: false,
+    prices: {},
+  });
+  const [activating, setActivating] = useState(false);
   const fetchPrices = useServerFn(listPrices);
+  const fetchPromo = useServerFn(getPromoSettings);
+  const activatePromo = useServerFn(activatePromoOffer);
   const plan = PLANS.find((p) => p.id === active)!;
   const price = prices.find((p) => p.id === active);
 
@@ -102,7 +111,40 @@ export function PlansSheet({ onClose }: { onClose: () => void }) {
       .catch(() => setPrices([]));
   }, [fetchPrices]);
 
-  const monthlyLabel = price ? `${price.amount_eur.toFixed(2)} € /mois` : plan.monthly;
+  useEffect(() => {
+    fetchPromo({})
+      .then((p) => setPromo(p))
+      .catch(() => setPromo({ enabled: false, prices: {} }));
+  }, [fetchPromo]);
+
+  const promoAmount = promo.enabled ? (promo.prices[active] ?? null) : null;
+  const promoFree = promo.enabled && promoAmount === 0;
+
+  const claimPromo = async () => {
+    setActivating(true);
+    try {
+      const result = await activatePromo({});
+      if (result.ok) {
+        toast.success("Offre de lancement activée : Super grok vous est offert 30 jours.");
+        onClose();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Activation impossible.");
+    } finally {
+      setActivating(false);
+    }
+  };
+
+  const monthlyLabel =
+    promoAmount !== null
+      ? promoAmount === 0
+        ? "Offert"
+        : `${promoAmount.toFixed(2)} € /mois`
+      : price
+        ? `${price.amount_eur.toFixed(2)} € /mois`
+        : plan.monthly;
   const yearlyAmount = price?.amount_eur_yearly ?? null;
   const yearlyLabel = yearlyAmount !== null ? `${yearlyAmount.toFixed(2)} € /an` : plan.yearly?.price;
   const yearlyPerMonth =
@@ -221,10 +263,15 @@ export function PlansSheet({ onClose }: { onClose: () => void }) {
 
         <button
           type="button"
-          onClick={() => setCheckoutOpen(true)}
-          className="mt-6 w-full rounded-full bg-foreground py-4 text-[17px] font-semibold text-background transition-transform active:scale-[0.98]"
+          disabled={activating}
+          onClick={() => (promoFree ? void claimPromo() : setCheckoutOpen(true))}
+          className="mt-6 w-full rounded-full bg-foreground py-4 text-[17px] font-semibold text-background transition-transform active:scale-[0.98] disabled:opacity-50"
         >
-          {plan.cta}
+          {activating
+            ? "Activation…"
+            : promoFree
+              ? "Activer l'offre de lancement (offerte)"
+              : plan.cta}
         </button>
 
         {checkoutOpen && (
@@ -236,7 +283,9 @@ export function PlansSheet({ onClose }: { onClose: () => void }) {
           />
         )}
 
-        <p className="mt-3 text-center text-sm text-muted-foreground">{plan.footnote}</p>
+        <p className="mt-3 text-center text-sm text-muted-foreground">
+          {promoFree ? "Offre de lancement : 30 jours offerts, sans paiement." : plan.footnote}
+        </p>
         {notice && <p className="mt-2 text-center text-sm text-primary">{notice}</p>}
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
