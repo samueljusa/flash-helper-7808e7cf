@@ -9,6 +9,8 @@ export type PromoSettings = {
 };
 
 const SETTINGS_ID = "global";
+/** Durée de l'offre de lancement, en jours. */
+export const PROMO_DAYS = 2;
 
 function publicClient() {
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"]!;
