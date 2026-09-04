@@ -3,7 +3,6 @@ import { Plus, Image as ImageIcon, Video, Smile, ArrowUp, Loader2, Sparkles } fr
 import { useServerFn } from "@tanstack/react-start";
 import { generateMedia } from "@/lib/generation.functions";
 import { enhancePrompt } from "@/lib/prompt.functions";
-import { formatSeconds } from "@/lib/quota";
 import { useI18n } from "@/lib/i18n";
 import { playChime } from "@/lib/chime";
 
@@ -14,14 +13,13 @@ const chip = (active: boolean) =>
   }`;
 
 type Props = {
-  quota?: { used: number; limit: number; remaining: number } | null;
   onStart?: (info: { prompt: string; mediaType: "image" | "video" }) => void;
   onSettled?: () => void;
   onGenerated?: () => void;
   onQuotaExceeded?: () => void;
 };
 
-export function PromptBar({ quota, onStart, onSettled, onGenerated, onQuotaExceeded }: Props) {
+export function PromptBar({ onStart, onSettled, onGenerated, onQuotaExceeded }: Props) {
   const { t, lang } = useI18n();
   const [res, setRes] = useState("720p");
   const [dur, setDur] = useState("6s");
@@ -91,7 +89,7 @@ export function PromptBar({ quota, onStart, onSettled, onGenerated, onQuotaExcee
       } else if (result.reason === "quota") {
         playChime("error");
         setText(prompt);
-        setSent(t("quotaReached"));
+        setSent(quotaMessage(result.code, result.retryAt));
         onQuotaExceeded?.();
       } else {
         playChime("error");
@@ -116,14 +114,9 @@ export function PromptBar({ quota, onStart, onSettled, onGenerated, onQuotaExcee
           {sent}
         </div>
       )}
-      {quota && (
-        <div className="mx-auto mb-2 w-fit rounded-full bg-secondary/70 px-4 py-1.5 text-xs text-muted-foreground backdrop-blur-xl">
-          Reste {formatSeconds(quota.remaining)} / {formatSeconds(quota.limit)} aujourd'hui
-        </div>
-      )}
       <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
         <div className="flex shrink-0 items-center gap-1 rounded-full bg-secondary/80 p-1 backdrop-blur-xl">
-          {["480p", "720p", "1080p"].map((r) => (
+          {(mode === "video" ? ["480p", "720p"] : ["480p", "720p", "1080p"]).map((r) => (
             <button key={r} type="button" onClick={() => setRes(r)} className={chip(res === r)}>
               {r}
             </button>
@@ -131,7 +124,7 @@ export function PromptBar({ quota, onStart, onSettled, onGenerated, onQuotaExcee
         </div>
         {mode === "video" && (
           <div className="flex shrink-0 items-center gap-1 rounded-full bg-secondary/80 p-1 backdrop-blur-xl">
-            {["6s", "10s"].map((d) => (
+            {["3s", "6s"].map((d) => (
               <button key={d} type="button" onClick={() => setDur(d)} className={chip(dur === d)}>
                 {d}
               </button>
