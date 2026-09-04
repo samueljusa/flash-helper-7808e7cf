@@ -61,17 +61,20 @@ async function withFreshMedia<T extends { media_url: string | null; storage_path
   );
 }
 
-async function assertStaff(context: {
+type RoleReader = {
   supabase: {
-    from: (t: "user_roles") => {
+    from: (t: string) => {
       select: (c: string) => {
         eq: (col: string, v: string) => PromiseLike<{ data: { role: string }[] | null }>;
       };
     };
   };
   userId: string;
-}) {
-  const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+};
+
+async function assertStaff(context: unknown) {
+  const ctx = context as RoleReader;
+  const { data } = await ctx.supabase.from("user_roles").select("role").eq("user_id", ctx.userId);
   const allowed = (data ?? []).some((r) => r.role === "admin" || r.role === "moderator");
   if (!allowed) throw new Error("Accès refusé");
 }
