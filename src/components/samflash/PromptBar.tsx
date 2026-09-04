@@ -12,6 +12,18 @@ const chip = (active: boolean) =>
     active ? "bg-foreground text-background" : "text-muted-foreground"
   }`;
 
+/** Message clair selon la limite atteinte par l'offre découverte. */
+function quotaMessage(code: "image_daily" | "video_daily" | "video_pause", retryAt: string | null) {
+  const when = retryAt
+    ? new Date(retryAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    : null;
+  if (code === "image_daily") return "Limite de 5 images par jour atteinte. Revenez demain ou passez à une offre supérieure.";
+  if (code === "video_daily") return "Limite de 9 vidéos par jour atteinte. Revenez demain ou passez à une offre supérieure.";
+  return when
+    ? `Pause de 3 h après 5 vidéos. Nouvelle génération possible à ${when}.`
+    : "Pause de 3 h après 5 vidéos. Réessayez un peu plus tard.";
+}
+
 type Props = {
   onStart?: (info: { prompt: string; mediaType: "image" | "video" }) => void;
   onSettled?: () => void;
